@@ -50,3 +50,5 @@ grafana_data/
 # Celery
 celerybeat-schedule
 celerybeat.pid
+
+tmp/
