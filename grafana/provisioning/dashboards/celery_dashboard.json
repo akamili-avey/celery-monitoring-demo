@@ -171,7 +171,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(celery_task_received_total) - sum(celery_task_received_total offset 5m)",
+          "expr": "sum(celery_task_received_total) - sum(celery_task_received_total offset $__range)",
           "legendFormat": "Total Tasks",
           "range": true,
           "refId": "A"
@@ -236,7 +236,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(celery_task_succeeded_total) - sum(celery_task_succeeded_total offset 5m)",
+          "expr": "sum(celery_task_succeeded_total) - sum(celery_task_succeeded_total offset $__range)",
           "legendFormat": "Successful Tasks",
           "range": true,
           "refId": "A"
@@ -248,7 +248,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "PBFA97CFB590B2093"
+        "uid": "prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -301,7 +301,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(celery_task_failed_total{name=\"tasks.tasks.add\"}) by (name) - sum(celery_task_failed_total{name=\"tasks.tasks.add\"} offset 5m) by (name)",
+          "expr": "sum(celery_task_failed_total) - sum(celery_task_failed_total offset $__range)",
           "legendFormat": "Failed Tasks",
           "range": true,
           "refId": "A"
@@ -402,42 +402,7 @@
         }
       ],
       "title": "Task Failure Rate",
-      "type": "timeseries",
-      "alert": {
-        "alertRuleTags": {},
-        "conditions": [
-          {
-            "evaluator": {
-              "params": [
-                20
-              ],
-              "type": "gt"
-            },
-            "operator": {
-              "type": "and"
-            },
-            "query": {
-              "params": [
-                "A",
-                "1m",
-                "now"
-              ]
-            },
-            "reducer": {
-              "params": [],
-              "type": "avg"
-            },
-            "type": "query"
-          }
-        ],
-        "executionErrorState": "alerting",
-        "for": "0m",
-        "frequency": "10s",
-        "handler": 1,
-        "name": "High Task Failure Rate",
-        "noDataState": "no_data",
-        "notifications": []
-      }
+      "type": "timeseries"
     },
     {
       "datasource": {
@@ -531,42 +496,7 @@
         }
       ],
       "title": "Task P95 Latency",
-      "type": "timeseries",
-      "alert": {
-        "alertRuleTags": {},
-        "conditions": [
-          {
-            "evaluator": {
-              "params": [
-                10
-              ],
-              "type": "gt"
-            },
-            "operator": {
-              "type": "and"
-            },
-            "query": {
-              "params": [
-                "A",
-                "1m",
-                "now"
-              ]
-            },
-            "reducer": {
-              "params": [],
-              "type": "avg"
-            },
-            "type": "query"
-          }
-        ],
-        "executionErrorState": "alerting",
-        "for": "0m",
-        "frequency": "10s",
-        "handler": 1,
-        "name": "High Task Latency",
-        "noDataState": "no_data",
-        "notifications": []
-      }
+      "type": "timeseries"
     }
   ],
   "preload": false,
