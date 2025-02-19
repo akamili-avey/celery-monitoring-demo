@@ -1,69 +1,55 @@
-# Django Celery Prometheus Monitoring
+# Django Celery with Prometheus and Grafana Monitoring
 
-This project demonstrates how to monitor Celery tasks using Prometheus and Grafana in a Django application.
+This project demonstrates a Django application with Celery task queue, monitored using Prometheus and Grafana.
 
-## Setup
+## Services
 
-1. Create and activate virtual environment:
+- Django application with Gunicorn (port 8787)
+- RabbitMQ message broker
+  - AMQP port: 5672
+  - Management UI: http://localhost:15672 (guest/guest)
+- Prometheus metrics (port 9999)
+- Grafana dashboards (port 3333)
+- Celery metrics exporter (port 9808)
+
+## Quick Start
+
+1. Start all services using the provided script:
 ```bash
-python3 -m venv venv
-source venv/bin/activate
+./start.sh
 ```
 
-2. Install dependencies:
+This script:
+- Kills any existing Gunicorn and Celery processes
+- Starts Docker services (RabbitMQ, Prometheus, Grafana, Celery-exporter)
+- Launches a Celery worker with 20 concurrent processes
+- Starts Gunicorn with 2 workers and 2 threads per worker
+- Sets up proper cleanup on exit
+
+2. Generate sample tasks using the trigger script:
 ```bash
-pip install -r requirements.txt
+./trigger.sh
 ```
 
-3. Start the infrastructure services (RabbitMQ, Prometheus, Grafana):
-```bash
-docker-compose up -d
-```
-
-4. Run Django migrations:
-```bash
-cd app
-python manage.py migrate
-```
-
-5. Start Django development server:
-```bash
-python manage.py runserver
-```
-
-6. In a new terminal, start Celery worker:
-```bash
-cd app
-celery -A core worker -l info
-```
-
-## Testing
-
-1. Trigger sample tasks:
-```bash
-curl http://localhost:8000/trigger/
-```
-
-2. View metrics:
-```bash
-curl http://localhost:8000/metrics/
-```
+This script:
+- Sends requests to the Django endpoint every second
+- Each request triggers two Celery tasks (add and multiply)
+- Continues until interrupted with Ctrl+C
 
 ## Monitoring
 
-1. Access Prometheus UI: http://localhost:9090
-2. Access Grafana UI: http://localhost:3000 (default credentials: admin/admin)
+1. Access Grafana at the default dashboard: at http://localhost:3333/d/celery-metrics/celery-metrics?orgId=1 (login: admin/admin)
+2. View raw metrics at http://localhost:9808/metrics from the Celery Exporter
+3. Query metrics using Prometheus at http://localhost:9999
 
-### Grafana Setup
+## Available Endpoints
 
-1. Add Prometheus as a data source:
-   - URL: http://prometheus:9090
-   - Access: Browser
+- `/trigger/` - Triggers sample Celery tasks
+- `/admin/` - Django admin interface
 
-2. Import a dashboard for Celery metrics monitoring
-   - Create a new dashboard
-   - Add panels for:
-     - Total tasks executed
-     - Successful tasks
-     - Failed tasks
-     - Task execution rate 
+## Stopping Services
+
+Press Ctrl+C in the terminal where `start.sh` is running. The script will:
+- Kill Celery and Gunicorn processes
+- Stop all Docker containers
+- Clean up temporary files 
