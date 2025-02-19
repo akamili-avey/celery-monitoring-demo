@@ -10,31 +10,19 @@ services:
       - RABBITMQ_DEFAULT_USER=guest
       - RABBITMQ_DEFAULT_PASS=guest
 
-  celery-worker:
-    build: .
-    command: celery -A core worker --loglevel=info --events
-    volumes:
-      - ./app:/app
-    environment:
-      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
-    depends_on:
-      - rabbitmq
-
   celery-exporter:
     image: danihodovic/celery-exporter
     platform: linux/amd64  # Use platform emulation
     ports:
       - "9808:9808"  # Celery exporter metrics port
-    environment:
-      - BROKER_URL=amqp://guest:guest@rabbitmq:5672//
+    command: --broker-url=amqp://guest:guest@rabbitmq:5672//
     depends_on:
       - rabbitmq
-      - celery-worker
 
   prometheus:
     image: prom/prometheus:latest
     ports:
-      - "9090:9090"
+      - "9999:9090"
     volumes:
       - ./prometheus:/etc/prometheus
       - prometheus_data:/prometheus
@@ -49,7 +37,7 @@ services:
   grafana:
     image: grafana/grafana:latest
     ports:
-      - "3000:3000"
+      - "3333:3000"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning

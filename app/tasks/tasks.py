@@ -1,11 +1,22 @@
 from celery import shared_task
+import logging
 
-@shared_task
-def add(x, y):
+logger = logging.getLogger(__name__)
+
+@shared_task(bind=True, max_retries=3)
+def add(self, x, y):
     """Sample task that adds two numbers."""
-    return x + y
+    try:
+        return x + y
+    except Exception as exc:
+        logger.error(f"Error in add task: {exc}")
+        self.retry(exc=exc, countdown=5)
 
-@shared_task
-def multiply(x, y):
+@shared_task(bind=True, max_retries=3)
+def multiply(self, x, y):
     """Sample task that multiplies two numbers."""
-    return x * y 
+    try:
+        return x * y
+    except Exception as exc:
+        logger.error(f"Error in multiply task: {exc}")
+        self.retry(exc=exc, countdown=5) 

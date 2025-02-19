@@ -10,4 +10,7 @@ def trigger_task(request):
     # Trigger both tasks
     add.delay(4, 4)
     multiply.delay(4, 4)
-    return JsonResponse({"message": "Tasks triggered successfully"})
+    
+    return JsonResponse({
+        "message": "Tasks triggered successfully"
+    })
