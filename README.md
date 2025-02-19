@@ -33,7 +33,7 @@ This script:
 
 This script:
 - Sends requests to the Django endpoint every second
-- Each request triggers two Celery tasks (add and multiply)
+- Each request triggers a celery task to add two numbers
 - Continues until interrupted with Ctrl+C
 
 ## Monitoring
