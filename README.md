@@ -44,29 +44,8 @@ This will start:
 - Grafana (port 3333)
 - Django application (port 8787)
 
-## Testing
-
-The project includes test scripts to generate various task patterns:
-
-1. Basic test pattern:
-```bash
-python tests/test_tasks.py
-```
-This runs a simple set of successful and failing tasks.
-
-2. Advanced pattern test:
-```bash
-python tests/test_patterns.py
-```
-This runs a 3-minute test with different patterns:
-- Steady rate of tasks
-- Burst of tasks
-- Mixed success/failure
-- Tasks with delays
-- Alternating success/failure
-- Mixed delay burst
-
 ## Monitoring & Alerts
+Open this as we run the testing scripts.
 
 1. Access Grafana at http://localhost:3333 (admin/admin)
 2. The default dashboard shows:
@@ -118,6 +97,28 @@ To trigger test tasks manually:
 curl "http://localhost:8787/trigger/?delay=0&failure=false"  # Successful task
 curl "http://localhost:8787/trigger/?delay=2&failure=true"   # Failing task with delay
 ```
+
+## Testing
+
+The project includes test scripts to generate various task patterns:
+
+1. Basic test pattern:
+```bash
+python tests/test_tasks.py
+```
+This runs a simple set of successful and failing tasks.
+
+2. Advanced pattern test:
+```bash
+python tests/test_patterns.py
+```
+This runs a 3-minute test with different patterns:
+- Steady rate of tasks
+- Burst of tasks
+- Mixed success/failure
+- Tasks with delays
+- Alternating success/failure
+- Mixed delay burst
 
 ## License
 
