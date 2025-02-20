@@ -8,6 +8,8 @@ A demonstration project showing how to monitor Celery tasks using Prometheus and
 - Prometheus metrics collection via celery-exporter
 - Grafana dashboards for task monitoring
 - Test scripts for generating task patterns
+
+The dashboard will have this stuff:
 - Real-time monitoring of task success/failure rates
 - Task latency tracking
 - Customizable alert rules and notifications
