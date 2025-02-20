@@ -65,7 +65,8 @@ This will start:
 - Django application with Celery workers
 
 ## Monitoring & Alerts
-Open this as we run the testing scripts.
+
+![Grafana Dashboard](docs/dashboard.png)
 
 1. Access Grafana at http://localhost:3333 (admin/admin)
 2. The default dashboard shows:
@@ -112,18 +113,8 @@ The following metrics are collected:
 
 ## Testing
 
-The project includes test scripts to generate various task patterns:
+The project includes a test script to generate various task patterns:
 
-1. Basic test pattern:
-```bash
-python tests/test_tasks.py
-```
-This runs a simple set of:
-- 5 successful tasks
-- 3 delayed tasks (2-second delay)
-- 2 failing tasks
-
-2. Advanced pattern test:
 ```bash
 python tests/test_patterns.py
 ```
