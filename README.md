@@ -39,11 +39,6 @@ pip install -r requirements.txt
    ```
 
 4. Configure your environment variables in `.env`. The following variables are available:
-   - Django Settings:
-     - `DJANGO_SECRET_KEY`: Django secret key
-     - `DJANGO_DEBUG`: Debug mode (True/False)
-     - `DJANGO_ALLOWED_HOSTS`: Comma-separated list of allowed hosts
-     - `DJANGO_HOST`: Host for the Django application
    - Service Ports:
      - `DJANGO_PORT`: Django application port (default: 8787)
      - `RABBITMQ_PORT`: RabbitMQ AMQP port (default: 5672)
@@ -52,16 +47,9 @@ pip install -r requirements.txt
      - `GRAFANA_PORT`: Grafana port (default: 3333)
      - `CELERY_EXPORTER_PORT`: Celery exporter metrics port (default: 9808)
    - Celery Settings:
-     - `CELERY_BROKER_URL`: RabbitMQ broker URL
-     - `CELERY_WORKERS`: Number of Celery workers
-     - `CELERY_MAX_MEMORY`: Maximum memory per child in KB
-   - Gunicorn Settings:
-     - `GUNICORN_WORKERS`: Number of Gunicorn workers
-     - `GUNICORN_THREADS`: Number of threads per worker
-     - `GUNICORN_MAX_REQUESTS`: Maximum requests per worker
-     - `GUNICORN_MAX_REQUESTS_JITTER`: Random jitter for max requests
-     - `GUNICORN_TIMEOUT`: Worker timeout in seconds
-     - `GUNICORN_GRACEFUL_TIMEOUT`: Graceful shutdown timeout
+     - `CELERY_BROKER_URL`: RabbitMQ broker URL (default: amqp://guest:guest@localhost:5672//)
+
+   Django and Celery will run on host machine directly, while prometheus, grafana and celery-exporter will run as docker containers.
 
 5. Start all services using the provided script:
 

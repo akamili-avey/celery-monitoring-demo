@@ -26,20 +26,20 @@ mkdir -p "$TMPDIR"
 # Start Celery worker and Gunicorn
 cd app
 # Start Celery with configured concurrency and memory limit
-celery -A core worker --loglevel=info --events --concurrency=${CELERY_WORKERS:-20} --max-memory-per-child=${CELERY_MAX_MEMORY:-512000} &
+celery -A core worker --loglevel=info --events --concurrency=20 --max-memory-per-child=512000 &
 CELERY_PID=$!
 
 # Start Gunicorn with configured workers and timeout settings
 gunicorn core.wsgi:application \
     --bind 0.0.0.0:${DJANGO_PORT:-8787} \
-    --workers ${GUNICORN_WORKERS:-2} \
-    --threads ${GUNICORN_THREADS:-2} \
+    --workers 2 \
+    --threads 2 \
     --worker-class=gthread \
     --worker-tmp-dir "$TMPDIR" \
-    --max-requests ${GUNICORN_MAX_REQUESTS:-1000} \
-    --max-requests-jitter ${GUNICORN_MAX_REQUESTS_JITTER:-50} \
-    --timeout ${GUNICORN_TIMEOUT:-30} \
-    --graceful-timeout ${GUNICORN_GRACEFUL_TIMEOUT:-30} &
+    --max-requests 1000 \
+    --max-requests-jitter 50 \
+    --timeout 30 \
+    --graceful-timeout 30 &
 GUNICORN_PID=$!
 
 # Cleanup on exit
