@@ -106,13 +106,13 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(celery_task_received_total[$__rate_interval])",
-          "legendFormat": "{{task_name}}",
+          "expr": "rate(celery_task_received_total[$__rate_interval]) or vector(0)",
+          "legendFormat": "{{name}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Task Execution Rate",
+      "title": "Task Execution Rate (tasks/second)",
       "type": "timeseries"
     },
     {
@@ -171,7 +171,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(celery_task_received_total) - sum(celery_task_received_total offset $__range)",
+          "expr": "(sum(celery_task_received_total) or vector(0)) - (sum(celery_task_received_total offset $__range) or vector(0))",
           "legendFormat": "Total Tasks",
           "range": true,
           "refId": "A"
@@ -236,7 +236,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(celery_task_succeeded_total) - sum(celery_task_succeeded_total offset $__range)",
+          "expr": "(sum(celery_task_succeeded_total) or vector(0)) - (sum(celery_task_succeeded_total offset $__range) or vector(0))",
           "legendFormat": "Successful Tasks",
           "range": true,
           "refId": "A"
@@ -248,7 +248,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "prometheus"
+        "uid": "PBFA97CFB590B2093"
       },
       "fieldConfig": {
         "defaults": {
@@ -298,10 +298,10 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "prometheus"
+            "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "sum(celery_task_failed_total) - sum(celery_task_failed_total offset $__range)",
+          "expr": "(sum(celery_task_failed_total) or vector(0)) - (sum(celery_task_failed_total offset $__range) or vector(0))",
           "legendFormat": "Failed Tasks",
           "range": true,
           "refId": "A"
@@ -395,14 +395,14 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "100 * (sum(celery_task_failed_total{name=\"tasks.tasks.add\"}) by (name) - sum(celery_task_failed_total{name=\"tasks.tasks.add\"} offset 1m) by (name)) / (sum(celery_task_received_total{name=\"tasks.tasks.add\"}) by (name) - sum(celery_task_received_total{name=\"tasks.tasks.add\"} offset 1m) by (name))",
+          "expr": "((sum(celery_task_failed_total) or vector(0)) - (sum(celery_task_failed_total offset $__range) or vector(0))) / ((sum(celery_task_received_total) or vector(0)) - (sum(celery_task_received_total offset $__range) or vector(0))) * 100",
           "legendFormat": "Failure Rate",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Task Failure Rate",
-      "type": "timeseries"
+      "title": "Task Failure Rate (%)",
+      "type": "stat"
     },
     {
       "datasource": {
@@ -489,14 +489,14 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum(rate(celery_task_runtime_bucket{name=\"tasks.tasks.add\"}[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(celery_task_runtime_bucket[$__rate_interval])) by (le)) or vector(0)",
           "legendFormat": "P95 Latency",
           "range": true,
           "refId": "A"
         }
       ],
       "title": "Task P95 Latency",
-      "type": "timeseries"
+      "type": "stat"
     }
   ],
   "preload": false,
