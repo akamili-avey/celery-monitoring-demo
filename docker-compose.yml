@@ -4,8 +4,8 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     ports:
-      - "5672:5672"  # AMQP protocol port
-      - "15672:15672"  # Management UI port
+      - "${RABBITMQ_PORT}:5672"  # AMQP protocol port
+      - "${RABBITMQ_MANAGEMENT_PORT}:15672"  # Management UI port
     environment:
       - RABBITMQ_DEFAULT_USER=guest
       - RABBITMQ_DEFAULT_PASS=guest
@@ -14,7 +14,7 @@ services:
     image: danihodovic/celery-exporter
     platform: linux/amd64  # Use platform emulation
     ports:
-      - "9808:9808"  # Celery exporter metrics port
+      - "${CELERY_EXPORTER_PORT}:9808"  # Celery exporter metrics port
     command: --broker-url=amqp://guest:guest@rabbitmq:5672//
     depends_on:
       - rabbitmq
@@ -22,7 +22,7 @@ services:
   prometheus:
     image: prom/prometheus:latest
     ports:
-      - "9999:9090"
+      - "${PROMETHEUS_PORT}:9090"
     volumes:
       - ./prometheus:/etc/prometheus
       - prometheus_data:/prometheus
@@ -37,7 +37,7 @@ services:
   grafana:
     image: grafana/grafana:latest
     ports:
-      - "3333:3000"
+      - "${GRAFANA_PORT}:3000"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning

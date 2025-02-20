@@ -4,7 +4,7 @@ A demonstration project showing how to monitor Celery tasks using Prometheus and
 
 ## Features
 
-- Django web application with Celery tasks
+- Django web application with Celery tasks (no database required)
 - Prometheus metrics collection via celery-exporter
 - Grafana dashboards for task monitoring
 - Test scripts for generating task patterns
@@ -32,17 +32,49 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-3. Start the services:
-```bash
-./start.sh
-```
+3. Copy the `.env.example` file to `.env`:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+4. Configure your environment variables in `.env`. The following variables are available:
+   - Django Settings:
+     - `DJANGO_SECRET_KEY`: Django secret key
+     - `DJANGO_DEBUG`: Debug mode (True/False)
+     - `DJANGO_ALLOWED_HOSTS`: Comma-separated list of allowed hosts
+     - `DJANGO_HOST`: Host for the Django application
+   - Service Ports:
+     - `DJANGO_PORT`: Django application port (default: 8787)
+     - `RABBITMQ_PORT`: RabbitMQ AMQP port (default: 5672)
+     - `RABBITMQ_MANAGEMENT_PORT`: RabbitMQ management UI port (default: 15672)
+     - `PROMETHEUS_PORT`: Prometheus port (default: 9999)
+     - `GRAFANA_PORT`: Grafana port (default: 3333)
+     - `CELERY_EXPORTER_PORT`: Celery exporter metrics port (default: 9808)
+   - Celery Settings:
+     - `CELERY_BROKER_URL`: RabbitMQ broker URL
+     - `CELERY_WORKERS`: Number of Celery workers
+     - `CELERY_MAX_MEMORY`: Maximum memory per child in KB
+   - Gunicorn Settings:
+     - `GUNICORN_WORKERS`: Number of Gunicorn workers
+     - `GUNICORN_THREADS`: Number of threads per worker
+     - `GUNICORN_MAX_REQUESTS`: Maximum requests per worker
+     - `GUNICORN_MAX_REQUESTS_JITTER`: Random jitter for max requests
+     - `GUNICORN_TIMEOUT`: Worker timeout in seconds
+     - `GUNICORN_GRACEFUL_TIMEOUT`: Graceful shutdown timeout
+
+5. Start all services using the provided script:
+
+   ```bash
+   ./start.sh
+   ```
 
 This will start:
-- RabbitMQ (port 5672, management: 15672)
-- Celery Exporter (port 9808)
-- Prometheus (port 9999)
-- Grafana (port 3333)
-- Django application (port 8787)
+- RabbitMQ (AMQP and management interface)
+- Celery Exporter for metrics collection
+- Prometheus for metrics storage
+- Grafana for visualization
+- Django application with Celery workers
 
 ## Monitoring & Alerts
 Open this as we run the testing scripts.
@@ -90,14 +122,6 @@ The following metrics are collected:
 - `celery_task_failed_total`: Failed tasks
 - `celery_task_runtime_seconds`: Task execution time
 
-## Development
-
-To trigger test tasks manually:
-```bash
-curl "http://localhost:8787/trigger/?delay=0&failure=false"  # Successful task
-curl "http://localhost:8787/trigger/?delay=2&failure=true"   # Failing task with delay
-```
-
 ## Testing
 
 The project includes test scripts to generate various task patterns:
@@ -106,19 +130,22 @@ The project includes test scripts to generate various task patterns:
 ```bash
 python tests/test_tasks.py
 ```
-This runs a simple set of successful and failing tasks.
+This runs a simple set of:
+- 5 successful tasks
+- 3 delayed tasks (2-second delay)
+- 2 failing tasks
 
 2. Advanced pattern test:
 ```bash
 python tests/test_patterns.py
 ```
 This runs a 3-minute test with different patterns:
-- Steady rate of tasks
-- Burst of tasks
-- Mixed success/failure
-- Tasks with delays
-- Alternating success/failure
-- Mixed delay burst
+- Phase 1 (0-30s): Steady rate of successful tasks (1 every 5s)
+- Phase 2 (30-60s): Burst of 10 tasks in quick succession
+- Phase 3 (60-90s): Mix of random success/failure tasks
+- Phase 4 (90-120s): Quiet period followed by delayed tasks
+- Phase 5 (120-150s): Alternating success/failure tasks
+- Phase 6 (150-180s): Final burst with random delays
 
 ## License
 

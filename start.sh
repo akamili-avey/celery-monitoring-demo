@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# Load environment variables from .env file
+if [ -f .env ]; then
+    export $(cat .env | grep -v '^#' | xargs)
+else
+    echo "Warning: .env file not found. Using default values."
+fi
+
 echo "Starting services..."
 
 # Kill existing gunicorn processes
@@ -18,21 +25,21 @@ mkdir -p "$TMPDIR"
 
 # Start Celery worker and Gunicorn
 cd app
-# Start Celery with concurrency of 2 and memory limit
-celery -A core worker --loglevel=info --events --concurrency=20 --max-memory-per-child=512000 &
+# Start Celery with configured concurrency and memory limit
+celery -A core worker --loglevel=info --events --concurrency=${CELERY_WORKERS:-20} --max-memory-per-child=${CELERY_MAX_MEMORY:-512000} &
 CELERY_PID=$!
 
-# Start Gunicorn with 2 workers and timeout settings
+# Start Gunicorn with configured workers and timeout settings
 gunicorn core.wsgi:application \
-    --bind 0.0.0.0:8787 \
-    --workers 2 \
-    --threads 2 \
+    --bind 0.0.0.0:${DJANGO_PORT:-8787} \
+    --workers ${GUNICORN_WORKERS:-2} \
+    --threads ${GUNICORN_THREADS:-2} \
     --worker-class=gthread \
     --worker-tmp-dir "$TMPDIR" \
-    --max-requests 1000 \
-    --max-requests-jitter 50 \
-    --timeout 30 \
-    --graceful-timeout 30 &
+    --max-requests ${GUNICORN_MAX_REQUESTS:-1000} \
+    --max-requests-jitter ${GUNICORN_MAX_REQUESTS_JITTER:-50} \
+    --timeout ${GUNICORN_TIMEOUT:-30} \
+    --graceful-timeout ${GUNICORN_GRACEFUL_TIMEOUT:-30} &
 GUNICORN_PID=$!
 
 # Cleanup on exit
@@ -46,11 +53,11 @@ trap cleanup SIGINT SIGTERM
 
 echo "
 Services running:
-- Django: http://localhost:8787
-- RabbitMQ: http://localhost:5672 (AMQP), http://localhost:15672 (UI, guest/guest)
-- Prometheus: http://localhost:9999
-- Grafana: http://localhost:3333 (admin/admin)
-- Metrics: http://localhost:9808/metrics
+- Django: http://localhost:${DJANGO_PORT:-8787}
+- RabbitMQ: http://localhost:${RABBITMQ_PORT:-5672} (AMQP), http://localhost:${RABBITMQ_MANAGEMENT_PORT:-15672} (UI, guest/guest)
+- Prometheus: http://localhost:${PROMETHEUS_PORT:-9999}
+- Grafana: http://localhost:${GRAFANA_PORT:-3333} (admin/admin)
+- Metrics: http://localhost:${CELERY_EXPORTER_PORT:-9808}/metrics
 
 Press Ctrl+C to stop all services"
 

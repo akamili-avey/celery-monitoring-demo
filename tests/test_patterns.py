@@ -1,9 +1,18 @@
 import time
 import requests
 import random
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Get configuration from environment variables
+DJANGO_HOST = os.getenv('DJANGO_HOST', 'localhost')
+DJANGO_PORT = os.getenv('DJANGO_PORT', '8787')
 
 def send_task(failure=False, delay=0):
-    response = requests.get(f"http://localhost:8787/trigger/?delay={delay}&failure={failure}")
+    response = requests.get(f"http://{DJANGO_HOST}:{DJANGO_PORT}/trigger/?delay={delay}&failure={failure}")
     return response.status_code == 200
 
 def run_pattern_test():
