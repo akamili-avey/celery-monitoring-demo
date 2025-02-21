@@ -1,3 +1,3 @@
-web: gunicorn app.core.wsgi:application
-worker: celery -A app.core worker --loglevel=info
+web: cd app && gunicorn core.wsgi:application
+worker: cd app && celery -A core worker --loglevel=info
 celery-exporter: celery-exporter --broker-url=$CLOUDAMQP_URL 
