@@ -3,12 +3,10 @@ Integration tests for the Celery metrics exporter.
 """
 import os
 import sys
-import tempfile
 import time
-from pathlib import Path
 from unittest import TestCase
 import multiprocessing
-import re
+import redis
 
 from app.metrics.exporter import CelerySuccessExporter
 from tests.celery_app import test_task, app
@@ -18,6 +16,12 @@ def run_worker(app):
     # Enable events
     app.conf.worker_send_task_events = True
     app.conf.task_send_sent_event = True
+    
+    # Disable Django loader
+    app.conf.update(
+        INSTALLED_APPS=(),
+        DJANGO_SETTINGS_MODULE=None,
+    )
     
     worker = app.Worker(
         loglevel='INFO',
@@ -32,13 +36,16 @@ class TestCelerySuccessExporter(TestCase):
     def setUp(self):
         """Set up test environment."""
         self.broker_url = os.getenv('CELERY_BROKER_URL', 'amqp://guest:guest@localhost:5674//')
+        self.redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
         
-        # Create a temporary file for metrics
-        self.metrics_file = tempfile.mktemp()
-        print(f"Created metrics file at {self.metrics_file}", file=sys.stderr)
+        # Create Redis client and clear metrics
+        self.redis_client = redis.Redis.from_url(self.redis_url)
+        self.metrics_key = 'celery_metrics'
+        self.redis_client.delete(self.metrics_key)
+        print(f"Cleared Redis key {self.metrics_key}", file=sys.stderr)
         
         # Create and start the exporter
-        self.exporter = CelerySuccessExporter(self.broker_url, self.metrics_file)
+        self.exporter = CelerySuccessExporter(self.broker_url, self.redis_url)
         self.exporter.start()
 
         # Start Celery worker in a separate process
@@ -63,38 +70,42 @@ class TestCelerySuccessExporter(TestCase):
             self.worker_process.join(timeout=1)
             print("Stopped Celery worker process", file=sys.stderr)
         
-        # Clean up metrics file
-        try:
-            Path(self.metrics_file).unlink()
-        except FileNotFoundError:
-            pass
+        # Clean up Redis key
+        self.redis_client.delete(self.metrics_key)
+        print(f"Cleaned up Redis key {self.metrics_key}", file=sys.stderr)
     
-    def read_metric_value(self) -> float:
-        """Read the current value of celery_task_succeeded_total from the metrics file."""
+    def get_metrics(self) -> str:
+        """Get the current metrics page from Redis."""
+        metrics = self.redis_client.get(self.metrics_key)
+        if metrics:
+            metrics_text = metrics.decode()
+            print(f"Current metrics from Redis:\n{metrics_text}", file=sys.stderr)
+            return metrics_text
+        return ""
+    
+    def get_counter_value(self) -> float:
+        """Extract the counter value from the stored metrics."""
         try:
-            metrics_content = Path(self.metrics_file).read_bytes().decode()
-            print(f"Raw metrics content:\n{metrics_content}", file=sys.stderr)
-            
-            # Look for the metric line and extract its value
-            for line in metrics_content.splitlines():
+            metrics = self.get_metrics()
+            if not metrics:
+                return 0.0
+                
+            # Parse the metrics text to find the counter value
+            for line in metrics.splitlines():
                 if line.startswith('celery_task_succeeded_total '):
-                    value = float(line.split()[1])
-                    print(f"Found metric value: {value}", file=sys.stderr)
-                    return value
-                    
-            print("No celery_task_succeeded_total metric found", file=sys.stderr)
+                    return float(line.split()[1])
             return 0.0
-        except FileNotFoundError:
-            print(f"Metrics file not found: {self.metrics_file}", file=sys.stderr)
+        except (ValueError, AttributeError):
             return 0.0
     
     def wait_for_metric_value(self, expected_value: float, timeout: int = 5) -> float:
         """Wait for the metric to reach the expected value or timeout."""
         start_time = time.time()
-        current_value = self.read_metric_value()
+        current_value = self.get_counter_value()
         
         while time.time() - start_time < timeout:
-            current_value = self.read_metric_value()
+            current_value = self.get_counter_value()
+            metrics_text = self.get_metrics()
             print(f"Current metric value: {current_value}", file=sys.stderr)
             if current_value >= expected_value:
                 break
@@ -104,8 +115,11 @@ class TestCelerySuccessExporter(TestCase):
     
     def test_task_success_metrics(self):
         """Test that the success metric correctly tracks task completions."""
-        # Get initial metric value
-        initial_value = self.read_metric_value()
+        # Get initial metrics and value
+        initial_metrics = self.get_metrics()
+        self.assertIn('celery_task_succeeded_total', initial_metrics,
+                     "Initial metrics should contain the counter")
+        initial_value = self.get_counter_value()
         print(f"Initial metric value: {initial_value}", file=sys.stderr)
         
         # Test single task
@@ -116,6 +130,13 @@ class TestCelerySuccessExporter(TestCase):
         first_value = self.wait_for_metric_value(initial_value + 1)
         self.assertEqual(first_value, initial_value + 1, 
                         "Metric value did not increase after first task")
+        
+        # Verify metrics format
+        metrics_after_first = self.get_metrics()
+        self.assertIn('# HELP celery_task_succeeded_total', metrics_after_first,
+                     "Metrics should contain help text")
+        self.assertIn('# TYPE celery_task_succeeded_total counter', metrics_after_first,
+                     "Metrics should contain type information")
         
         # Test batch of tasks
         batch_size = 3
@@ -131,4 +152,9 @@ class TestCelerySuccessExporter(TestCase):
         # Verify total number of tasks
         total_tasks = batch_size + 1  # batch + first task
         self.assertEqual(final_value, initial_value + total_tasks,
-                        f"Final metric value {final_value} does not match expected {initial_value + total_tasks}") 
+                        f"Final metric value {final_value} does not match expected {initial_value + total_tasks}")
+        
+        # Verify final metrics format
+        final_metrics = self.get_metrics()
+        self.assertIn(f'celery_task_succeeded_total {final_value}', final_metrics,
+                     "Final metrics should contain the correct counter value") 

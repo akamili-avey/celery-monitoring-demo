@@ -1,28 +1,22 @@
 """
-A minimal Celery exporter that tracks celery_task_succeeded_total metric.
+A minimal Celery exporter that tracks celery_task_succeeded_total metric using Redis.
 """
 import sys
 import threading
-import time
-from pathlib import Path
-from typing import Dict, Optional
 
 from celery import Celery
-from celery.events.state import State
 from prometheus_client import Counter, CollectorRegistry, generate_latest
+import redis
 
 class CelerySuccessExporter:
     """
-    A minimal Celery exporter that only tracks successful tasks.
+    A minimal Celery exporter that only tracks successful tasks using Redis.
     """
-    def __init__(self, broker_url: str, output_file: str):
-        print(f"Initializing exporter with broker={broker_url}", file=sys.stderr)
+    def __init__(self, broker_url: str, redis_url: str = 'redis://localhost:6379/0'):
+        print(f"Initializing exporter with broker={broker_url}, redis={redis_url}", file=sys.stderr)
         self.broker_url = broker_url
-        self.output_file = Path(output_file)
-        
-        # Create the file if it doesn't exist
-        self.output_file.touch()
-        print(f"Created/touched metrics file at {self.output_file}", file=sys.stderr)
+        self.redis_client = redis.Redis.from_url(redis_url)
+        self.metrics_key = 'celery_metrics'
         
         self.app = Celery(broker=broker_url)
         self.state = self.app.events.State()
@@ -35,8 +29,16 @@ class CelerySuccessExporter:
             registry=self.registry
         )
         
-        # Write initial metrics
-        self._write_metrics()
+        # Set initial value if metrics exist in Redis
+        stored_metrics = self.redis_client.get(self.metrics_key)
+        if stored_metrics:
+            print("Found existing metrics in Redis", file=sys.stderr)
+            print(f"Metrics content:\n{stored_metrics.decode()}", file=sys.stderr)
+            # Note: We don't need to parse and set the value since Counter starts at 0
+            # and will be incremented by events
+        else:
+            # Store initial metrics
+            self._store_metrics()
         
         # Event handlers mapping
         self.handlers = {
@@ -50,17 +52,17 @@ class CelerySuccessExporter:
         """Handle task-succeeded events by incrementing the counter."""
         print(f"Received task-succeeded event: {event.get('uuid')}", file=sys.stderr)
         self.tasks_succeeded.inc()
-        self._write_metrics()
+        self._store_metrics()
 
-    def _write_metrics(self):
-        """Write current metrics to the output file."""
+    def _store_metrics(self):
+        """Store current metrics in Redis."""
         try:
             metrics = generate_latest(self.registry)
-            self.output_file.write_bytes(metrics)
-            print(f"Updated metrics written to {self.output_file}", file=sys.stderr)
+            self.redis_client.set(self.metrics_key, metrics)
+            print(f"Updated metrics stored in Redis", file=sys.stderr)
             print(f"Metrics content:\n{metrics.decode()}", file=sys.stderr)
         except Exception as e:
-            print(f"Error writing metrics: {e}", file=sys.stderr)
+            print(f"Error storing metrics: {e}", file=sys.stderr)
 
     def start(self):
         """Start monitoring Celery events."""
@@ -84,8 +86,4 @@ class CelerySuccessExporter:
         self._stop_event.set()
         if self._thread:
             self._thread.join(timeout=1.0)
-        print("Exporter stopped", file=sys.stderr)
-
-    def get_metrics(self) -> bytes:
-        """Get the current metrics in Prometheus format."""
-        return generate_latest(self.registry) 
+        print("Exporter stopped", file=sys.stderr) 
