@@ -88,28 +88,47 @@ class TestCelerySuccessExporter(TestCase):
             print(f"Metrics file not found: {self.metrics_file}", file=sys.stderr)
             return 0.0
     
-    def test_task_success_metric(self):
-        """Test that successful tasks increment the counter in the metrics file."""
+    def wait_for_metric_value(self, expected_value: float, timeout: int = 5) -> float:
+        """Wait for the metric to reach the expected value or timeout."""
+        start_time = time.time()
+        current_value = self.read_metric_value()
+        
+        while time.time() - start_time < timeout:
+            current_value = self.read_metric_value()
+            print(f"Current metric value: {current_value}", file=sys.stderr)
+            if current_value >= expected_value:
+                break
+            time.sleep(0.1)
+            
+        return current_value
+    
+    def test_task_success_metrics(self):
+        """Test that the success metric correctly tracks task completions."""
         # Get initial metric value
         initial_value = self.read_metric_value()
         print(f"Initial metric value: {initial_value}", file=sys.stderr)
         
-        # Run a task
+        # Test single task
         test_task.delay()
-        print("Task submitted", file=sys.stderr)
+        print("First task submitted", file=sys.stderr)
         
-        # Wait for task completion and metrics file update
-        max_wait = 5  # Maximum wait time in seconds
-        start_time = time.time()
-        updated_value = initial_value
+        # Wait for first task completion and verify
+        first_value = self.wait_for_metric_value(initial_value + 1)
+        self.assertEqual(first_value, initial_value + 1, 
+                        "Metric value did not increase after first task")
         
-        while time.time() - start_time < max_wait:
-            updated_value = self.read_metric_value()
-            print(f"Current metric value: {updated_value}", file=sys.stderr)
-            if updated_value > initial_value:
-                break
-            time.sleep(0.1)
+        # Test batch of tasks
+        batch_size = 3
+        for i in range(batch_size):
+            test_task.delay()
+        print(f"Batch of {batch_size} tasks submitted", file=sys.stderr)
         
-        # Verify the counter increased by 1
-        self.assertEqual(updated_value, initial_value + 1, 
-                        "Metric value did not increase after task completion") 
+        # Wait for batch completion and verify
+        final_value = self.wait_for_metric_value(first_value + batch_size)
+        self.assertEqual(final_value, first_value + batch_size, 
+                        f"Metric value did not increase by {batch_size} after submitting batch of tasks")
+        
+        # Verify total number of tasks
+        total_tasks = batch_size + 1  # batch + first task
+        self.assertEqual(final_value, initial_value + total_tasks,
+                        f"Final metric value {final_value} does not match expected {initial_value + total_tasks}") 
