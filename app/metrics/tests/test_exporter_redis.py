@@ -224,6 +224,7 @@ class TestCelerySuccessExporter(TestCase):
         try:
             # Get initial value
             initial_value = self.get_counter_value('celery_task_succeeded_total')
+            print(f"Initial success metric value: {initial_value}", file=sys.stderr)
             
             # Submit a batch of tasks quickly
             batch_size = 5
@@ -235,6 +236,7 @@ class TestCelerySuccessExporter(TestCase):
             
             # Check Redis immediately - it should not be updated yet due to the periodic nature
             time.sleep(0.1)  # Small delay to allow events to be processed but not enough for Redis update
+            print("Checking immediate value after 0.1s delay", file=sys.stderr)
             immediate_value = self.get_counter_value('celery_task_succeeded_total')
             print(f"Immediate success metric value after batch: {immediate_value}", file=sys.stderr)
             
@@ -243,7 +245,9 @@ class TestCelerySuccessExporter(TestCase):
                             "Metrics should not update before the update interval has elapsed")
             
             # Wait for the update interval to pass and check again
-            time.sleep(self.exporter.update_interval * 1.2)  # Wait slightly longer than the update interval
+            wait_time = self.exporter.update_interval * 1.2  # Wait slightly longer than the update interval
+            print(f"Waiting {wait_time}s for update interval to pass...", file=sys.stderr)
+            time.sleep(wait_time)
             updated_value = self.get_counter_value('celery_task_succeeded_total')
             print(f"Success metric value after waiting: {updated_value}", file=sys.stderr)
             

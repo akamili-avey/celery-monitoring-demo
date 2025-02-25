@@ -173,15 +173,30 @@ class CelerySuccessExporter:
     def _redis_updater(self):
         """Thread function that periodically updates Redis with the latest metrics."""
         print(f"Starting Redis updater thread (interval: {self.update_interval}s)", file=sys.stderr)
+        self._last_update_time = time.time()
         
         while not self._stop_event.is_set():
+            # Calculate time since last update
+            current_time = time.time()
+            time_since_last_update = current_time - self._last_update_time
+            
+            # Check if update interval has elapsed
+            print(f"Redis updater check: dirty={self._metrics_dirty}, time_since_last_update={time_since_last_update:.2f}s, interval={self.update_interval}s", file=sys.stderr)
+            
+            # Only update if the update interval has elapsed, regardless of whether metrics are dirty
+            if time_since_last_update >= self.update_interval:
+                if self._metrics_dirty:
+                    print(f"Updating Redis (dirty: {self._metrics_dirty}, time since last update: {time_since_last_update:.2f}s)", file=sys.stderr)
+                    self._store_metrics()
+                else:
+                    print(f"Update interval elapsed but metrics not dirty, skipping update", file=sys.stderr)
+                    # Still update the last update time even if we don't store metrics
+                    self._last_update_time = current_time
+            else:
+                print(f"Skipping update (time since last update: {time_since_last_update:.2f}s < interval: {self.update_interval}s)", file=sys.stderr)
+                
             # Sleep for the update interval
             time.sleep(self.update_interval)
-            
-            # Check if metrics need to be updated
-            if self._metrics_dirty:
-                print(f"Updating Redis (dirty: {self._metrics_dirty})", file=sys.stderr)
-                self._store_metrics()
     
     def _monitor_events(self):
         """Thread function that monitors Celery events."""
