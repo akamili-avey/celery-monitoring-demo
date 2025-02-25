@@ -6,7 +6,7 @@ import threading
 import time
 
 from celery import Celery
-from prometheus_client import Counter, CollectorRegistry, generate_latest
+from prometheus_client import Counter, Histogram, CollectorRegistry, generate_latest
 import redis
 
 class CelerySuccessExporter:
@@ -48,6 +48,15 @@ class CelerySuccessExporter:
             registry=self.registry
         )
         
+        # Task runtime histogram
+        self.task_runtime = Histogram(
+            'celery_task_runtime_seconds',
+            'Histogram of Celery task runtime in seconds',
+            ['task_name', 'state'],  # Labels for task name and state (success/failure)
+            registry=self.registry,
+            buckets=(0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0)
+        )
+        
         # Set initial value if metrics exist in Redis
         stored_metrics = self.redis_client.get(self.metrics_key)
         if stored_metrics:
@@ -79,9 +88,38 @@ class CelerySuccessExporter:
         self._last_update_time = time.time()
 
     def _handle_task_succeeded(self, event):
-        """Handle task-succeeded events by incrementing the counter."""
-        print(f"Received task-succeeded event: {event.get('uuid')}", file=sys.stderr)
+        """Handle task-succeeded events by incrementing the counter and recording runtime."""
+        task_uuid = event.get('uuid')
+        print(f"Received task-succeeded event: {task_uuid}", file=sys.stderr)
         self.tasks_succeeded.inc()
+        
+        # Update the state with this event
+        self.state.event(event)
+        
+        # Get the task from the state
+        task = self.state.tasks.get(task_uuid)
+        
+        if task:
+            print(f"Task found in state: {task}", file=sys.stderr)
+            task_name = task.name or 'unknown'
+            
+            # Get the runtime from the event directly
+            runtime = event.get('runtime')
+            if runtime is not None:
+                print(f"Task {task_uuid} ({task_name}) succeeded in {runtime:.3f}s", file=sys.stderr)
+                
+                # Record runtime in histogram
+                print(f"Recording runtime {runtime}s for task {task_name} (success) in histogram", file=sys.stderr)
+                self.task_runtime.labels(task_name=task_name, state='success').observe(runtime)
+                
+                # Debug: Print current histogram metrics
+                metrics = generate_latest(self.registry).decode()
+                histogram_lines = [line for line in metrics.splitlines() if 'celery_task_runtime_seconds' in line]
+                print(f"Current histogram metrics:\n" + "\n".join(histogram_lines), file=sys.stderr)
+            else:
+                print(f"Task {task_uuid} has no runtime in event", file=sys.stderr)
+        else:
+            print(f"No task found in state for task {task_uuid}", file=sys.stderr)
         
         # Mark metrics as needing update but don't write to Redis immediately
         self._metrics_dirty = True
@@ -89,8 +127,12 @@ class CelerySuccessExporter:
 
     def _handle_task_received(self, event):
         """Handle task-received events by incrementing the counter."""
-        print(f"Received task-received event: {event.get('uuid')}", file=sys.stderr)
+        task_uuid = event.get('uuid')
+        print(f"Received task-received event: {task_uuid}", file=sys.stderr)
         self.tasks_received.inc()
+        
+        # Update the state with this event
+        self.state.event(event)
         
         # Mark metrics as needing update but don't write to Redis immediately
         self._metrics_dirty = True
@@ -98,8 +140,21 @@ class CelerySuccessExporter:
 
     def _handle_task_failed(self, event):
         """Handle task-failed events by incrementing the counter."""
-        print(f"Received task-failed event: {event.get('uuid')}", file=sys.stderr)
+        task_uuid = event.get('uuid')
+        print(f"Received task-failed event: {task_uuid}", file=sys.stderr)
         self.tasks_failed.inc()
+        
+        # Update the state with this event
+        self.state.event(event)
+        
+        # Get the task from the state
+        task = self.state.tasks.get(task_uuid)
+        
+        if task:
+            task_name = task.name or 'unknown'
+            print(f"Task {task_uuid} ({task_name}) failed", file=sys.stderr)
+        else:
+            print(f"No task found in state for task {task_uuid}", file=sys.stderr)
         
         # Mark metrics as needing update but don't write to Redis immediately
         self._metrics_dirty = True

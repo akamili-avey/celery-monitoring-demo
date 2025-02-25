@@ -2,6 +2,7 @@
 Test Celery application.
 """
 import os
+import time
 from celery import Celery
 
 os.environ['DJANGO_SETTINGS_MODULE'] = '' # prevent auto import of django settings
@@ -23,4 +24,11 @@ def test_task():
 def failing_task():
     """A test task that always fails."""
     # Raise an exception to simulate a failing task
-    raise ValueError("This task is designed to fail for testing purposes") 
+    raise ValueError("This task is designed to fail for testing purposes")
+
+@app.task
+def delayed_task(delay_seconds=0.5):
+    """A test task that sleeps for a specified amount of time before succeeding."""
+    print(f"Delayed task sleeping for {delay_seconds} seconds")
+    time.sleep(delay_seconds)
+    return f"Slept for {delay_seconds} seconds" 

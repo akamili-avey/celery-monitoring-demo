@@ -7,9 +7,10 @@ import time
 from unittest import TestCase
 import multiprocessing
 import redis
+import re
 
 from app.metrics.exporter import CelerySuccessExporter
-from app.metrics.tests.celery_app import test_task, failing_task, app
+from app.metrics.tests.celery_app import test_task, failing_task, delayed_task, app
 
 def run_worker(app):
     """Function to run in a separate process as the Celery worker."""
@@ -102,6 +103,56 @@ class TestCelerySuccessExporter(TestCase):
             return 0.0
         except (ValueError, AttributeError):
             return 0.0
+    
+    def get_histogram_sum(self, metric_name: str, labels: dict = None) -> float:
+        """Extract a histogram sum value from the stored metrics."""
+        try:
+            metrics = self.get_metrics()
+            if not metrics:
+                return 0.0
+            
+            # Construct the label string if provided
+            label_str = ""
+            if labels:
+                label_parts = []
+                for key, value in labels.items():
+                    label_parts.append(f'{key}="{value}"')
+                label_str = "{" + ",".join(label_parts) + "}"
+            
+            # Parse the metrics text to find the histogram sum
+            metric_sum = f"{metric_name}_sum{label_str}"
+            for line in metrics.splitlines():
+                if line.startswith(metric_sum):
+                    return float(line.split()[1])
+            return 0.0
+        except (ValueError, AttributeError) as e:
+            print(f"Error extracting histogram sum: {e}", file=sys.stderr)
+            return 0.0
+    
+    def get_histogram_count(self, metric_name: str, labels: dict = None) -> int:
+        """Extract a histogram count value from the stored metrics."""
+        try:
+            metrics = self.get_metrics()
+            if not metrics:
+                return 0
+            
+            # Construct the label string if provided
+            label_str = ""
+            if labels:
+                label_parts = []
+                for key, value in labels.items():
+                    label_parts.append(f'{key}="{value}"')
+                label_str = "{" + ",".join(label_parts) + "}"
+            
+            # Parse the metrics text to find the histogram count
+            metric_count = f"{metric_name}_count{label_str}"
+            for line in metrics.splitlines():
+                if line.startswith(metric_count):
+                    return int(line.split()[1])
+            return 0
+        except (ValueError, AttributeError) as e:
+            print(f"Error extracting histogram count: {e}", file=sys.stderr)
+            return 0
     
     def wait_for_metric_value(self, metric_name: str, expected_value: float, timeout: int = 5) -> float:
         """Wait for the metric to reach the expected value or timeout."""
@@ -198,7 +249,7 @@ class TestCelerySuccessExporter(TestCase):
             print("Confirmed that metrics were updated periodically rather than immediately", file=sys.stderr)
         else:
             print("Note: Could not confirm periodic updates - immediate value already reflected all tasks", file=sys.stderr)
-    
+
     def test_received_and_failed_metrics(self):
         """Test that the received and failed metrics correctly track tasks."""
         # Get initial metrics values
@@ -251,4 +302,108 @@ class TestCelerySuccessExporter(TestCase):
         self.assertIn('# HELP celery_task_failed_total', metrics,
                      "Metrics should contain failed help text")
         self.assertIn('# TYPE celery_task_failed_total counter', metrics,
-                     "Metrics should contain failed type information") 
+                     "Metrics should contain failed type information")
+                     
+    def test_task_runtime_histogram(self):
+        """Test that the task runtime histogram correctly tracks task execution times."""
+        # Get initial metrics
+        initial_metrics = self.get_metrics()
+        
+        # Verify histogram exists in initial metrics - only check for the type declaration
+        self.assertIn('# TYPE celery_task_runtime_seconds histogram', initial_metrics,
+                     "Initial metrics should contain the runtime histogram type declaration")
+        
+        # Submit a successful task
+        test_task.delay()
+        print("Successful task submitted for runtime measurement", file=sys.stderr)
+        
+        # Wait for the task to be processed and metrics to update
+        time.sleep(1)
+        
+        # Submit a failing task
+        try:
+            failing_task.delay()
+            print("Failing task submitted for runtime measurement", file=sys.stderr)
+        except Exception as e:
+            print(f"Error submitting failing task: {e}", file=sys.stderr)
+        
+        # Wait for metrics to update
+        time.sleep(self.update_interval * 3)
+        
+        # Get updated metrics
+        updated_metrics = self.get_metrics()
+        
+        # Check for success runtime metrics
+        success_pattern = r'celery_task_runtime_seconds_count{.*state="success".*} (\d+)'
+        success_matches = re.findall(success_pattern, updated_metrics)
+        self.assertTrue(success_matches, "Should find success runtime metrics")
+        success_count = int(success_matches[0])
+        self.assertGreaterEqual(success_count, 1, "Should have at least one success runtime measurement")
+        
+        # Check for task name labels
+        self.assertIn('task_name="app.metrics.tests.celery_app.test_task"', updated_metrics,
+                     "Metrics should include the successful task name")
+        
+        # Verify histogram buckets exist for success state
+        self.assertIn('celery_task_runtime_seconds_bucket{', updated_metrics,
+                     "Metrics should contain histogram buckets")
+        
+        print("Task runtime histogram metrics verified", file=sys.stderr)
+        
+    def test_delayed_task_runtime(self):
+        """Test that the runtime histogram accurately measures task execution time."""
+        # Get initial metrics
+        initial_metrics = self.get_metrics()
+        print(f"Initial metrics:\n{initial_metrics}", file=sys.stderr)
+        
+        # Define delay times for testing
+        delay_times = [0.5, 1.0, 2.0]
+        total_delay = sum(delay_times)
+        
+        # Submit tasks with different delay times
+        for delay in delay_times:
+            delayed_task.delay(delay_seconds=delay)
+            print(f"Submitted delayed task with {delay}s delay", file=sys.stderr)
+        
+        # Wait for tasks to complete and metrics to update
+        # We need to wait longer than the longest delay plus some buffer
+        wait_time = max(delay_times) + 3
+        print(f"Waiting {wait_time}s for tasks to complete...", file=sys.stderr)
+        time.sleep(wait_time)
+        
+        # Get updated metrics
+        updated_metrics = self.get_metrics()
+        print(f"Updated metrics after tasks:\n{updated_metrics}", file=sys.stderr)
+        
+        # Check that the tasks were executed
+        succeeded_value = self.get_counter_value('celery_task_succeeded_total')
+        self.assertGreaterEqual(succeeded_value, 3, 
+                              f"Expected at least 3 succeeded tasks, got {succeeded_value}")
+        
+        # Check for the presence of histogram metrics
+        # Look for specific histogram bucket patterns
+        bucket_pattern = r'celery_task_runtime_seconds_bucket{.*} \d+'
+        bucket_matches = re.findall(bucket_pattern, updated_metrics)
+        self.assertTrue(bucket_matches, 
+                      f"Expected to find histogram buckets in metrics, but none found. Metrics: {updated_metrics}")
+        
+        # Check for histogram sum
+        sum_pattern = r'celery_task_runtime_seconds_sum{.*} (\d+\.\d+)'
+        sum_matches = re.findall(sum_pattern, updated_metrics)
+        self.assertTrue(sum_matches, 
+                      f"Expected to find histogram sum in metrics, but none found. Metrics: {updated_metrics}")
+        
+        # Check for histogram count
+        count_pattern = r'celery_task_runtime_seconds_count{.*} (\d+)'
+        count_matches = re.findall(count_pattern, updated_metrics)
+        self.assertTrue(count_matches, 
+                      f"Expected to find histogram count in metrics, but none found. Metrics: {updated_metrics}")
+        
+        # Verify that the delayed task appears in the metrics
+        # The full task name includes the module path
+        task_pattern = r'celery_task_runtime_seconds_.*{.*task_name="app\.metrics\.tests\.celery_app\.delayed_task".*}'
+        task_matches = re.findall(task_pattern, updated_metrics)
+        self.assertTrue(task_matches, 
+                      f"Expected to find delayed_task in histogram metrics, but none found. Metrics: {updated_metrics}")
+        
+        print("Delayed task runtime measurements verified", file=sys.stderr)
