@@ -11,7 +11,7 @@ import redis
 
 class CelerySuccessExporter:
     """
-    A minimal Celery exporter that only tracks successful tasks using Redis.
+    A minimal Celery exporter that tracks Celery task metrics using Redis.
     Metrics are periodically written to Redis rather than on every event.
     """
     def __init__(self, broker_url: str, redis_url: str = 'redis://localhost:6379/0', update_interval: float = 0.5):
@@ -26,9 +26,25 @@ class CelerySuccessExporter:
         
         # Initialize registry and metrics
         self.registry = CollectorRegistry()
+        
+        # Task success counter
         self.tasks_succeeded = Counter(
             'celery_task_succeeded_total',
             'Number of succeeded Celery tasks',
+            registry=self.registry
+        )
+        
+        # Task received counter
+        self.tasks_received = Counter(
+            'celery_task_received_total',
+            'Number of received Celery tasks',
+            registry=self.registry
+        )
+        
+        # Task failed counter
+        self.tasks_failed = Counter(
+            'celery_task_failed_total',
+            'Number of failed Celery tasks',
             registry=self.registry
         )
         
@@ -45,7 +61,9 @@ class CelerySuccessExporter:
         
         # Event handlers mapping
         self.handlers = {
-            'task-succeeded': self._handle_task_succeeded
+            'task-succeeded': self._handle_task_succeeded,
+            'task-received': self._handle_task_received,
+            'task-failed': self._handle_task_failed
         }
         
         # Flags for thread control
@@ -64,6 +82,24 @@ class CelerySuccessExporter:
         """Handle task-succeeded events by incrementing the counter."""
         print(f"Received task-succeeded event: {event.get('uuid')}", file=sys.stderr)
         self.tasks_succeeded.inc()
+        
+        # Mark metrics as needing update but don't write to Redis immediately
+        self._metrics_dirty = True
+        self._metrics_updated.set()  # Signal that metrics have been updated
+
+    def _handle_task_received(self, event):
+        """Handle task-received events by incrementing the counter."""
+        print(f"Received task-received event: {event.get('uuid')}", file=sys.stderr)
+        self.tasks_received.inc()
+        
+        # Mark metrics as needing update but don't write to Redis immediately
+        self._metrics_dirty = True
+        self._metrics_updated.set()  # Signal that metrics have been updated
+
+    def _handle_task_failed(self, event):
+        """Handle task-failed events by incrementing the counter."""
+        print(f"Received task-failed event: {event.get('uuid')}", file=sys.stderr)
+        self.tasks_failed.inc()
         
         # Mark metrics as needing update but don't write to Redis immediately
         self._metrics_dirty = True
