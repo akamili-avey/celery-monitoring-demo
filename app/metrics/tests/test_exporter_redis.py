@@ -217,38 +217,49 @@ class TestCelerySuccessExporter(TestCase):
     
     def test_periodic_updates(self):
         """Test that metrics are updated periodically rather than on every event."""
-        # Get initial value
-        initial_value = self.get_counter_value('celery_task_succeeded_total')
+        # Set a longer update interval for this test to clearly observe batching
+        original_interval = self.exporter.update_interval
+        self.exporter.update_interval = 1.0  # 1 second interval
         
-        # Submit a batch of tasks quickly
-        batch_size = 5
-        for i in range(batch_size):
-            test_task.delay()
-            # Don't sleep between tasks to ensure they're processed in the same update cycle
-        
-        print(f"Submitted {batch_size} tasks in quick succession", file=sys.stderr)
-        
-        # Check Redis immediately - it might not be updated yet due to the periodic nature
-        immediate_value = self.get_counter_value('celery_task_succeeded_total')
-        print(f"Immediate success metric value after batch: {immediate_value}", file=sys.stderr)
-        
-        # Wait for the update interval to pass and check again
-        time.sleep(self.update_interval * 2)  # Wait for 2 update cycles
-        updated_value = self.get_counter_value('celery_task_succeeded_total')
-        print(f"Success metric value after waiting: {updated_value}", file=sys.stderr)
-        
-        # The final value should reflect all tasks
-        final_value = self.wait_for_metric_value('celery_task_succeeded_total', initial_value + batch_size)
-        self.assertEqual(final_value, initial_value + batch_size,
-                        f"Final success metric value {final_value} does not match expected {initial_value + batch_size}")
-        
-        # Verify that the metrics were updated in batches rather than individually
-        # This is hard to test definitively, but we can check if the immediate value
-        # was less than the final value, indicating batched updates
-        if immediate_value < final_value:
+        try:
+            # Get initial value
+            initial_value = self.get_counter_value('celery_task_succeeded_total')
+            
+            # Submit a batch of tasks quickly
+            batch_size = 5
+            for i in range(batch_size):
+                test_task.delay()
+                # Don't sleep between tasks to ensure they're processed in the same update cycle
+            
+            print(f"Submitted {batch_size} tasks in quick succession", file=sys.stderr)
+            
+            # Check Redis immediately - it should not be updated yet due to the periodic nature
+            time.sleep(0.1)  # Small delay to allow events to be processed but not enough for Redis update
+            immediate_value = self.get_counter_value('celery_task_succeeded_total')
+            print(f"Immediate success metric value after batch: {immediate_value}", file=sys.stderr)
+            
+            # Verify that no update has happened yet (metrics should not change before update interval)
+            self.assertEqual(immediate_value, initial_value, 
+                            "Metrics should not update before the update interval has elapsed")
+            
+            # Wait for the update interval to pass and check again
+            time.sleep(self.exporter.update_interval * 1.2)  # Wait slightly longer than the update interval
+            updated_value = self.get_counter_value('celery_task_succeeded_total')
+            print(f"Success metric value after waiting: {updated_value}", file=sys.stderr)
+            
+            # Now the value should be updated
+            self.assertGreater(updated_value, immediate_value,
+                              "Metrics should be updated after the update interval has elapsed")
+            
+            # The final value should reflect all tasks
+            final_value = self.wait_for_metric_value('celery_task_succeeded_total', initial_value + batch_size)
+            self.assertEqual(final_value, initial_value + batch_size,
+                            f"Final success metric value {final_value} does not match expected {initial_value + batch_size}")
+            
             print("Confirmed that metrics were updated periodically rather than immediately", file=sys.stderr)
-        else:
-            print("Note: Could not confirm periodic updates - immediate value already reflected all tasks", file=sys.stderr)
+        finally:
+            # Restore original update interval
+            self.exporter.update_interval = original_interval
 
     def test_received_and_failed_metrics(self):
         """Test that the received and failed metrics correctly track tasks."""

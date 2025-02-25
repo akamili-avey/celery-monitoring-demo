@@ -75,9 +75,8 @@ class CelerySuccessExporter:
             'task-failed': self._handle_task_failed
         }
         
-        # Flags for thread control
+        # Flag for thread control
         self._stop_event = threading.Event()
-        self._metrics_updated = threading.Event()
         
         # Threads
         self._monitor_thread = None
@@ -121,9 +120,8 @@ class CelerySuccessExporter:
         else:
             print(f"No task found in state for task {task_uuid}", file=sys.stderr)
         
-        # Mark metrics as needing update but don't write to Redis immediately
+        # Mark metrics as needing update
         self._metrics_dirty = True
-        self._metrics_updated.set()  # Signal that metrics have been updated
 
     def _handle_task_received(self, event):
         """Handle task-received events by incrementing the counter."""
@@ -134,9 +132,8 @@ class CelerySuccessExporter:
         # Update the state with this event
         self.state.event(event)
         
-        # Mark metrics as needing update but don't write to Redis immediately
+        # Mark metrics as needing update
         self._metrics_dirty = True
-        self._metrics_updated.set()  # Signal that metrics have been updated
 
     def _handle_task_failed(self, event):
         """Handle task-failed events by incrementing the counter."""
@@ -156,9 +153,8 @@ class CelerySuccessExporter:
         else:
             print(f"No task found in state for task {task_uuid}", file=sys.stderr)
         
-        # Mark metrics as needing update but don't write to Redis immediately
+        # Mark metrics as needing update
         self._metrics_dirty = True
-        self._metrics_updated.set()  # Signal that metrics have been updated
 
     def _store_metrics(self):
         """Store current metrics in Redis."""
@@ -179,21 +175,13 @@ class CelerySuccessExporter:
         print(f"Starting Redis updater thread (interval: {self.update_interval}s)", file=sys.stderr)
         
         while not self._stop_event.is_set():
-            # Wait for either a metrics update or the update interval
-            # This allows us to update immediately if there's a burst of events
-            # but also ensures we don't wait longer than update_interval
-            timeout_reached = not self._metrics_updated.wait(timeout=self.update_interval)
+            # Sleep for the update interval
+            time.sleep(self.update_interval)
             
-            # If we were woken up by a metrics update or if the timeout was reached
-            current_time = time.time()
-            time_since_last_update = current_time - self._last_update_time
-            
-            if self._metrics_dirty or (timeout_reached and time_since_last_update >= self.update_interval):
-                print(f"Updating Redis (dirty: {self._metrics_dirty}, time since last update: {time_since_last_update:.2f}s)", file=sys.stderr)
+            # Check if metrics need to be updated
+            if self._metrics_dirty:
+                print(f"Updating Redis (dirty: {self._metrics_dirty})", file=sys.stderr)
                 self._store_metrics()
-            
-            # Reset the event for the next wait
-            self._metrics_updated.clear()
     
     def _monitor_events(self):
         """Thread function that monitors Celery events."""
@@ -225,7 +213,6 @@ class CelerySuccessExporter:
         
         # Signal threads to stop
         self._stop_event.set()
-        self._metrics_updated.set()  # Wake up the Redis updater thread
         
         # Wait for threads to finish
         if self._monitor_thread:
