@@ -54,16 +54,13 @@ class CelerySuccessExporter:
             'Histogram of Celery task runtime in seconds',
             ['task_name', 'state'],  # Labels for task name and state (success/failure)
             registry=self.registry,
-            buckets=(0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0)
+            buckets=Histogram.DEFAULT_BUCKETS
         )
         
         # Set initial value if metrics exist in Redis
         stored_metrics = self.redis_client.get(self.metrics_key)
         if stored_metrics:
             print("Found existing metrics in Redis", file=sys.stderr)
-            print(f"Metrics content:\n{stored_metrics.decode()}", file=sys.stderr)
-            # Note: We don't need to parse and set the value since Counter starts at 0
-            # and will be incremented by events
         else:
             # Store initial metrics
             self._store_metrics()
@@ -89,7 +86,6 @@ class CelerySuccessExporter:
     def _handle_task_succeeded(self, event):
         """Handle task-succeeded events by incrementing the counter and recording runtime."""
         task_uuid = event.get('uuid')
-        print(f"Received task-succeeded event: {task_uuid}", file=sys.stderr)
         self.tasks_succeeded.inc()
         
         # Update the state with this event
@@ -99,34 +95,19 @@ class CelerySuccessExporter:
         task = self.state.tasks.get(task_uuid)
         
         if task:
-            print(f"Task found in state: {task}", file=sys.stderr)
             task_name = task.name or 'unknown'
             
             # Get the runtime from the event directly
             runtime = event.get('runtime')
             if runtime is not None:
-                print(f"Task {task_uuid} ({task_name}) succeeded in {runtime:.3f}s", file=sys.stderr)
-                
                 # Record runtime in histogram
-                print(f"Recording runtime {runtime}s for task {task_name} (success) in histogram", file=sys.stderr)
                 self.task_runtime.labels(task_name=task_name, state='success').observe(runtime)
-                
-                # Debug: Print current histogram metrics
-                metrics = generate_latest(self.registry).decode()
-                histogram_lines = [line for line in metrics.splitlines() if 'celery_task_runtime_seconds' in line]
-                print(f"Current histogram metrics:\n" + "\n".join(histogram_lines), file=sys.stderr)
-            else:
-                print(f"Task {task_uuid} has no runtime in event", file=sys.stderr)
-        else:
-            print(f"No task found in state for task {task_uuid}", file=sys.stderr)
-        
+            
         # Mark metrics as needing update
         self._metrics_dirty = True
 
     def _handle_task_received(self, event):
         """Handle task-received events by incrementing the counter."""
-        task_uuid = event.get('uuid')
-        print(f"Received task-received event: {task_uuid}", file=sys.stderr)
         self.tasks_received.inc()
         
         # Update the state with this event
@@ -138,20 +119,10 @@ class CelerySuccessExporter:
     def _handle_task_failed(self, event):
         """Handle task-failed events by incrementing the counter."""
         task_uuid = event.get('uuid')
-        print(f"Received task-failed event: {task_uuid}", file=sys.stderr)
         self.tasks_failed.inc()
         
         # Update the state with this event
         self.state.event(event)
-        
-        # Get the task from the state
-        task = self.state.tasks.get(task_uuid)
-        
-        if task:
-            task_name = task.name or 'unknown'
-            print(f"Task {task_uuid} ({task_name}) failed", file=sys.stderr)
-        else:
-            print(f"No task found in state for task {task_uuid}", file=sys.stderr)
         
         # Mark metrics as needing update
         self._metrics_dirty = True
@@ -161,8 +132,6 @@ class CelerySuccessExporter:
         try:
             metrics = generate_latest(self.registry)
             self.redis_client.set(self.metrics_key, metrics)
-            print(f"Updated metrics stored in Redis", file=sys.stderr)
-            print(f"Metrics content:\n{metrics.decode()}", file=sys.stderr)
             
             # Reset the dirty flag and update time
             self._metrics_dirty = False
@@ -180,23 +149,16 @@ class CelerySuccessExporter:
             current_time = time.time()
             time_since_last_update = current_time - self._last_update_time
             
-            # Check if update interval has elapsed
-            print(f"Redis updater check: dirty={self._metrics_dirty}, time_since_last_update={time_since_last_update:.2f}s, interval={self.update_interval}s", file=sys.stderr)
-            
             # Only update if the update interval has elapsed, regardless of whether metrics are dirty
             if time_since_last_update >= self.update_interval:
                 if self._metrics_dirty:
-                    print(f"Updating Redis (dirty: {self._metrics_dirty}, time since last update: {time_since_last_update:.2f}s)", file=sys.stderr)
                     self._store_metrics()
                 else:
-                    print(f"Update interval elapsed but metrics not dirty, skipping update", file=sys.stderr)
                     # Still update the last update time even if we don't store metrics
                     self._last_update_time = current_time
-            else:
-                print(f"Skipping update (time since last update: {time_since_last_update:.2f}s < interval: {self.update_interval}s)", file=sys.stderr)
                 
-            # Sleep for the update interval
-            time.sleep(self.update_interval)
+            # Sleep for a short time to check frequently but not consume too much CPU
+            self._stop_event.wait(min(0.1, self.update_interval / 2))
     
     def _monitor_events(self):
         """Thread function that monitors Celery events."""
