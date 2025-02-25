@@ -12,8 +12,8 @@ setup(
         "gunicorn>=21.2.0",
         "flower>=2.0.1",
         "requests>=2.31.0",
-        "celery-exporter>=1.5.0",
         "whitenoise>=6.6.0",
         "dj-database-url>=2.1.0",
+        "redis>=5.0.1",
     ],
 ) 
