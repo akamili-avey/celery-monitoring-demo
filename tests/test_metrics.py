@@ -28,15 +28,6 @@ class TestMetricsWithExec(unittest.TestCase):
             shell=True,
             preexec_fn=os.setsid  # Create a new process group
         )
-
-        # Define a signal handler
-        def signal_handler(signum, frame):
-            # Terminate the subprocess
-            os.killpg(os.getpgid(cls.app_process.pid), signal.SIGTERM)
-
-        # Register the signal handler
-        signal.signal(signal.SIGINT, signal_handler)
-        signal.signal(signal.SIGTERM, signal_handler)
         
         # Wait for the application to start
         print("Waiting for the application to start...")
@@ -45,24 +36,26 @@ class TestMetricsWithExec(unittest.TestCase):
         # Set the server URL
         cls.server_url = "http://localhost:8787"  # Use the port from .env
         
-        # Check if the server is running by checking the metrics endpoint directly
+        # Check if the server is running
         server_running = False
-        for attempt in range(1, 4):  # Try 3 times
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
             try:
                 response = requests.get(f"{cls.server_url}/metrics/")
                 if response.status_code == 200:
-                    server_running = True
                     print(f"Server is running (attempt {attempt})")
+                    server_running = True
                     break
                 print(f"Server check attempt {attempt} returned status code {response.status_code}")
             except requests.exceptions.ConnectionError as e:
                 print(f"Server check attempt {attempt} failed: {e}")
-                if attempt < 3:
-                    print("Retrying in 2 seconds...")
-                    time.sleep(2)
+                
+            if attempt < max_attempts:
+                print(f"Retrying in 2 seconds... (attempt {attempt}/{max_attempts})")
+                time.sleep(2)
         
+        # If the server failed to start, clean up and raise an exception
         if not server_running:
-            print("Server check failed after 3 attempts")
             cls.tearDownClass()
             raise Exception("Failed to start the application")
     
@@ -71,7 +64,6 @@ class TestMetricsWithExec(unittest.TestCase):
         """Stop the application."""
         if hasattr(cls, 'app_process') and cls.app_process:
             try:
-                # Ensure the subprocess is terminated when the test class is torn down
                 os.killpg(os.getpgid(cls.app_process.pid), signal.SIGTERM)
                 print("Stopped the application")
             except Exception as e:
@@ -84,20 +76,14 @@ class TestMetricsWithExec(unittest.TestCase):
             response = requests.get(f"{self.server_url}/metrics/")
             self.assertEqual(response.status_code, 200)
             
-            # Print the metrics for debugging
-            print("Metrics endpoint response:")
-            print(response.text)
-            
             # Check that the response contains metrics
             self.assertTrue(len(response.text) > 0, "Metrics response should not be empty")
             
-            # If we expect specific metrics, check for them
-            # For example, if we expect Celery metrics:
+            # Check for expected metrics content
+            # This is a basic check - you may want to add more specific assertions
+            # based on what metrics you expect to see
             if "celery" in response.text.lower():
                 self.assertIn("celery", response.text.lower())
-                print("Found Celery metrics in the response")
-            else:
-                print("No Celery metrics found in the response, but the endpoint is working")
             
         except requests.exceptions.ConnectionError as e:
             self.fail(f"Failed to connect to server: {e}")
