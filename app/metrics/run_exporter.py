@@ -6,6 +6,7 @@ import os
 import sys
 import time
 import signal
+import ssl
 from app.metrics.exporter import CelerySuccessExporter
 
 def main():
@@ -22,6 +23,12 @@ def main():
     if not redis_url:
         print("Error: REDIS_URL environment variable is required", file=sys.stderr)
         sys.exit(1)
+    
+    # Handle SSL certificate verification for Redis
+    if redis_url.startswith('rediss://'):
+        print("Using Redis with SSL, disabling certificate verification", file=sys.stderr)
+        # Modify the URL to include SSL parameters
+        redis_url = redis_url + '?ssl_cert_reqs=none'
     
     print(f"Starting Celery Success Exporter with broker={broker_url}, redis={redis_url}", file=sys.stderr)
     
