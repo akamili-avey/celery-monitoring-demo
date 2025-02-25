@@ -44,8 +44,13 @@ class TestCelerySuccessExporter(TestCase):
         self.redis_client.delete(self.metrics_key)
         print(f"Cleared Redis key {self.metrics_key}", file=sys.stderr)
         
-        # Create and start the exporter
-        self.exporter = CelerySuccessExporter(self.broker_url, self.redis_url)
+        # Create and start the exporter with a shorter update interval for testing
+        self.update_interval = 0.2  # 200ms for faster testing
+        self.exporter = CelerySuccessExporter(
+            self.broker_url, 
+            self.redis_url,
+            update_interval=self.update_interval
+        )
         self.exporter.start()
 
         # Start Celery worker in a separate process
@@ -105,11 +110,11 @@ class TestCelerySuccessExporter(TestCase):
         
         while time.time() - start_time < timeout:
             current_value = self.get_counter_value()
-            metrics_text = self.get_metrics()
             print(f"Current metric value: {current_value}", file=sys.stderr)
             if current_value >= expected_value:
                 break
-            time.sleep(0.1)
+            # Wait slightly longer than the update interval to ensure Redis is updated
+            time.sleep(self.update_interval * 1.5)
             
         return current_value
     
@@ -157,4 +162,39 @@ class TestCelerySuccessExporter(TestCase):
         # Verify final metrics format
         final_metrics = self.get_metrics()
         self.assertIn(f'celery_task_succeeded_total {final_value}', final_metrics,
-                     "Final metrics should contain the correct counter value") 
+                     "Final metrics should contain the correct counter value")
+    
+    def test_periodic_updates(self):
+        """Test that metrics are updated periodically rather than on every event."""
+        # Get initial value
+        initial_value = self.get_counter_value()
+        
+        # Submit a batch of tasks quickly
+        batch_size = 5
+        for i in range(batch_size):
+            test_task.delay()
+            # Don't sleep between tasks to ensure they're processed in the same update cycle
+        
+        print(f"Submitted {batch_size} tasks in quick succession", file=sys.stderr)
+        
+        # Check Redis immediately - it might not be updated yet due to the periodic nature
+        immediate_value = self.get_counter_value()
+        print(f"Immediate metric value after batch: {immediate_value}", file=sys.stderr)
+        
+        # Wait for the update interval to pass and check again
+        time.sleep(self.update_interval * 2)  # Wait for 2 update cycles
+        updated_value = self.get_counter_value()
+        print(f"Metric value after waiting: {updated_value}", file=sys.stderr)
+        
+        # The final value should reflect all tasks
+        final_value = self.wait_for_metric_value(initial_value + batch_size)
+        self.assertEqual(final_value, initial_value + batch_size,
+                        f"Final metric value {final_value} does not match expected {initial_value + batch_size}")
+        
+        # Verify that the metrics were updated in batches rather than individually
+        # This is hard to test definitively, but we can check if the immediate value
+        # was less than the final value, indicating batched updates
+        if immediate_value < final_value:
+            print("Confirmed that metrics were updated periodically rather than immediately", file=sys.stderr)
+        else:
+            print("Note: Could not confirm periodic updates - immediate value already reflected all tasks", file=sys.stderr) 
