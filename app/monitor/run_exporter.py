@@ -7,7 +7,7 @@ import sys
 import time
 import signal
 import ssl
-from app.metrics.exporter import CelerySuccessExporter
+from app.monitor.exporter import CelerySuccessExporter
 
 def main():
     """Run the Celery Success Exporter."""

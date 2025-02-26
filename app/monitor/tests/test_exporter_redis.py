@@ -9,8 +9,8 @@ import multiprocessing
 import redis
 import re
 
-from app.metrics.exporter import CelerySuccessExporter
-from app.metrics.tests.celery_app import test_task, failing_task, delayed_task, app
+from app.monitor.exporter import CelerySuccessExporter
+from app.monitor.tests.celery_test_app import test_task, failing_task, delayed_task, app
 
 def run_worker(app):
     """Function to run in a separate process as the Celery worker."""
@@ -356,7 +356,7 @@ class TestCelerySuccessExporter(TestCase):
         self.assertGreaterEqual(success_count, 1, "Should have at least one success runtime measurement")
         
         # Check for task name labels
-        self.assertIn('task_name="app.metrics.tests.celery_app.test_task"', updated_metrics,
+        self.assertIn('task_name="app.monitor.tests.celery_test_app.test_task"', updated_metrics,
                      "Metrics should include the successful task name")
         
         # Verify histogram buckets exist for success state
@@ -392,33 +392,33 @@ class TestCelerySuccessExporter(TestCase):
         
         # Check that the tasks were executed
         succeeded_value = self.get_counter_value('celery_task_succeeded_total')
-        self.assertGreaterEqual(succeeded_value, 3, 
+        self.assertGreaterEqual(succeeded_value, 3,
                               f"Expected at least 3 succeeded tasks, got {succeeded_value}")
         
         # Check for the presence of histogram metrics
         # Look for specific histogram bucket patterns
         bucket_pattern = r'celery_task_runtime_seconds_bucket{.*} \d+'
         bucket_matches = re.findall(bucket_pattern, updated_metrics)
-        self.assertTrue(bucket_matches, 
+        self.assertTrue(bucket_matches,
                       f"Expected to find histogram buckets in metrics, but none found. Metrics: {updated_metrics}")
         
         # Check for histogram sum
         sum_pattern = r'celery_task_runtime_seconds_sum{.*} (\d+\.\d+)'
         sum_matches = re.findall(sum_pattern, updated_metrics)
-        self.assertTrue(sum_matches, 
+        self.assertTrue(sum_matches,
                       f"Expected to find histogram sum in metrics, but none found. Metrics: {updated_metrics}")
         
         # Check for histogram count
         count_pattern = r'celery_task_runtime_seconds_count{.*} (\d+)'
         count_matches = re.findall(count_pattern, updated_metrics)
-        self.assertTrue(count_matches, 
+        self.assertTrue(count_matches,
                       f"Expected to find histogram count in metrics, but none found. Metrics: {updated_metrics}")
         
         # Verify that the delayed task appears in the metrics
         # The full task name includes the module path
-        task_pattern = r'celery_task_runtime_seconds_.*{.*task_name="app\.metrics\.tests\.celery_app\.delayed_task".*}'
+        task_pattern = r'celery_task_runtime_seconds_.*{.*task_name="app\.monitor\.tests\.celery_test_app\.delayed_task".*}'
         task_matches = re.findall(task_pattern, updated_metrics)
-        self.assertTrue(task_matches, 
+        self.assertTrue(task_matches,
                       f"Expected to find delayed_task in histogram metrics, but none found. Metrics: {updated_metrics}")
         
         print("Delayed task runtime measurements verified", file=sys.stderr)

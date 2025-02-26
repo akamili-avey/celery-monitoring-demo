@@ -17,7 +17,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path
 from tasks.views import trigger_task
-from metrics.views import metrics_view
+from monitor.views import metrics_view
 
 urlpatterns = [
     path('trigger/', trigger_task, name='trigger_task'),
