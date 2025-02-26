@@ -13,17 +13,14 @@ from django.conf import settings
 REDIS_URL = getattr(settings, 'REDIS_URL', os.getenv('REDIS_URL', 'redis://localhost:6379/0'))
 METRICS_KEY = 'celery_metrics'
 
-# Remove the global variables and move them to the decorator parameters
-def basic_auth_required(auth_user=os.getenv('PROMETHEUS_METRICS_ENDPOINT_AUTH_USERNAME', ''), 
-                        auth_pass=os.getenv('PROMETHEUS_METRICS_ENDPOINT_AUTH_PASSWORD', '')):
+# Simplified decorator with empty defaults since we pass values explicitly when using it
+def basic_auth_required(auth_user='', auth_pass=''):
     """
     Decorator that enforces HTTP Basic Authentication for a view.
     
     Args:
-        auth_user (str, optional): Username for authentication. 
-                                  Defaults to PROMETHEUS_METRICS_ENDPOINT_AUTH_USERNAME env var.
-        auth_pass (str, optional): Password for authentication.
-                                  Defaults to PROMETHEUS_METRICS_ENDPOINT_AUTH_PASSWORD env var.
+        auth_user (str, optional): Username for authentication. Defaults to empty string.
+        auth_pass (str, optional): Password for authentication. Defaults to empty string.
     """
     def decorator(view_func):
         @wraps(view_func)
@@ -64,7 +61,11 @@ def basic_auth_required(auth_user=os.getenv('PROMETHEUS_METRICS_ENDPOINT_AUTH_US
     return decorator
 
 @require_GET
-@basic_auth_required()
+# Example of passing environment variables directly in the decorator
+@basic_auth_required(
+    auth_user=os.getenv('PROMETHEUS_METRICS_ENDPOINT_AUTH_USERNAME', ''),
+    auth_pass=os.getenv('PROMETHEUS_METRICS_ENDPOINT_AUTH_PASSWORD', '')
+)
 def metrics_view(request):
     """
     Endpoint that serves Prometheus metrics from Redis.
