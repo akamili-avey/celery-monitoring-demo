@@ -8,6 +8,8 @@ A demonstration project showing how to monitor Celery tasks using Prometheus and
 - Prometheus metrics collection via celery-exporter
 - Grafana dashboards for task monitoring
 - Test scripts for generating task patterns
+
+The dashboard will have this stuff:
 - Real-time monitoring of task success/failure rates
 - Task latency tracking
 - Customizable alert rules and notifications
@@ -113,11 +115,41 @@ The following metrics are collected:
 
 ## Testing
 
-The project includes a test script to generate various task patterns:
+### Automated Tests
+
+The project includes comprehensive automated tests using pytest. To run all tests:
+
+```bash
+python -m pytest
+```
+
+Or to run tests with verbose output:
+
+```bash
+python -m pytest -v
+```
+
+#### Test Modules
+
+1. **Metrics Exporter Tests** (`app/monitor/tests/test_exporter_redis.py`):
+   - `test_task_success_metrics`: Verifies that successful task executions are correctly counted
+   - `test_task_runtime_histogram`: Tests the histogram metrics for task runtime
+   - `test_delayed_task_runtime`: Ensures delayed tasks have their runtime correctly measured
+   - `test_periodic_updates`: Validates that metrics are updated at the configured interval rather than immediately
+   - `test_received_and_failed_metrics`: Checks that received and failed task metrics are tracked properly
+
+2. **Integration Tests** (`tests/test_integration.py`):
+   - Tests the full integration between Django, Celery, and the metrics exporter
+   - Verifies metrics are correctly exposed to Prometheus
+
+### Manual Testing
+
+The project includes a test script to generate various task patterns for manual testing:
 
 ```bash
 python tests/test_patterns.py
 ```
+
 This runs a 3-minute test with different patterns:
 - Phase 1 (0-30s): Steady rate of successful tasks (1 every 5s)
 - Phase 2 (30-60s): Burst of 10 tasks in quick succession
@@ -125,6 +157,29 @@ This runs a 3-minute test with different patterns:
 - Phase 4 (90-120s): Quiet period followed by delayed tasks
 - Phase 5 (120-150s): Alternating success/failure tasks
 - Phase 6 (150-180s): Final burst with random delays
+
+### Testing Individual Components
+
+To test specific components:
+
+```bash
+# Test only the Redis exporter
+python -m pytest app/monitor/tests/test_exporter_redis.py
+
+# Test a specific test case
+python -m pytest app/monitor/tests/test_exporter_redis.py::TestCelerySuccessExporter::test_periodic_updates
+
+# Test with coverage report
+python -m pytest --cov=app
+```
+
+### Debugging Tests
+
+For debugging tests, you can use the `-s` flag to see print statements:
+
+```bash
+python -m pytest -s app/monitor/tests/test_exporter_redis.py
+```
 
 ## License
 

@@ -10,6 +10,13 @@ services:
       - RABBITMQ_DEFAULT_USER=guest
       - RABBITMQ_DEFAULT_PASS=guest
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
   celery-exporter:
     image: danihodovic/celery-exporter
     platform: linux/amd64  # Use platform emulation
@@ -51,4 +58,5 @@ services:
 
 volumes:
   prometheus_data:
-  grafana_data: 
+  grafana_data:
+  redis_data: 
